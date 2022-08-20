@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:cadastry_viewer/utils/location.dart' as location;
 import 'package:flutter/material.dart';
 import 'package:cadastry_viewer/utils/epsg_crs.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -45,9 +48,16 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   bool _cadastryLayerEnabled = false;
-  int _timesPressed = 0;
   CadastryData? _parcelData;
   CadastryLayerColor _cadastryLayerColor = CadastryLayerColor.orange;
+  // used to signal flutter map when show parcel data button has been pressed
+  int _timesPressedParcel = 0;
+  int _timesPressedLocation = 0;
+
+  // location related
+  bool _userLocationEnabled = false;
+  ll.LatLng? _currentPos;
+  StreamSubscription? locationSS;
 
   final CameraPosition _cnt =
       const CameraPosition(target: LatLng(43.5152271, 16.1088484), zoom: 15);
@@ -97,6 +107,22 @@ class _MyHomePageState extends State<MyHomePage> {
             );
           });
         });
+  }
+
+  void registerLocationListener() {
+    locationSS = location.location.onLocationChanged.listen((data) => setState(
+        () =>
+            _currentPos = ll.LatLng(data.latitude ?? 0, data.longitude ?? 0)));
+  }
+
+  void disableLocation() {
+    if (_userLocationEnabled) {
+      locationSS?.cancel();
+      setState(() {
+        _userLocationEnabled = false;
+        _currentPos = null;
+      });
+    }
   }
 
   @override
@@ -177,35 +203,76 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                     ],
                   )),
-              //const Card(
-              //    color: Colors.brown, child: ListTile(title: Text("aaa"))),
+              Card(
+                color: Colors.brown,
+                child: CheckboxListTile(
+                  title: const Text("Location Enabled"),
+                  subtitle: const Text("Toggle phone location"),
+                  value: _userLocationEnabled,
+                  checkboxShape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  onChanged: (last) async {
+                    if (!_userLocationEnabled) {
+                      await location.setupLocation();
+                      if (location.enabled) {
+                        //ll.LatLng lok = await location.getLocation();
+                        registerLocationListener();
+                        setState(() => _userLocationEnabled = true);
+                      }
+                    } else {
+                      disableLocation();
+                    }
+                  },
+                ),
+              ),
             ])),
       ),
-      body: Stack(children: <Widget>[
-        MapFlutter(
-          center: ll.LatLng(_cnt.target.latitude, _cnt.target.longitude),
-          overlayEnabled: _cadastryLayerEnabled,
-          timesPressed: _timesPressed,
-          cadastryColor: _cadastryLayerColor,
-          onParcelDataChanged: (data) {
-            setStateSheet!(() => _parcelData = data);
-          },
-        ),
-        const Center(child: Icon(Icons.my_location, color: Colors.white)),
-      ]),
-      //MapMapbox(center: _center),
-      floatingActionButton: FloatingActionButton(
-        //onPressed: () => setState(() => _timesPressed++),
-        onPressed: () {
-          setState(() {
-            _timesPressed++;
-            _parcelData = null;
-          });
-          if (!_cadastryLayerEnabled) return;
-          dispatchBottomSheet();
+      body: MapFlutter(
+        center: ll.LatLng(_cnt.target.latitude, _cnt.target.longitude),
+        overlayEnabled: _cadastryLayerEnabled,
+        timesPressedParcel: _timesPressedParcel,
+        timesPressedLocation: _timesPressedLocation,
+        cadastryColor: _cadastryLayerColor,
+        location: _currentPos,
+        onParcelDataChanged: (data) {
+          setStateSheet!(() => _parcelData = data);
         },
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+      ),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.start,
+        verticalDirection: VerticalDirection.up,
+        //shrinkWrap: true,
+        children: [
+          FloatingActionButton(
+            //onPressed: () => setState(() => _timesPressed++),
+            backgroundColor: Colors.blue,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.all(Radius.circular(10))),
+            onPressed: () {
+              setState(() {
+                _timesPressedParcel++;
+                _parcelData = null;
+              });
+              if (!_cadastryLayerEnabled) return;
+              dispatchBottomSheet();
+            },
+
+            tooltip: "View Parcel Data",
+            child: const Icon(Icons.not_listed_location,
+                semanticLabel: "View Parcel Data"),
+          ),
+          const SizedBox(height: 18),
+          FloatingActionButton(
+            //onPressed: () => setState(() => _timesPressed++),
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            onPressed: () => setState(() => _timesPressedLocation++),
+            tooltip: "Go to Your Location",
+            child: const Icon(Icons.radio_button_on,
+                semanticLabel: "Go to Your Location"),
+          ),
+        ],
       ),
     );
   }

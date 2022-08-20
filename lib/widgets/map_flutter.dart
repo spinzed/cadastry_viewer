@@ -14,27 +14,33 @@ class MapFlutter extends StatefulWidget {
     Key? key,
     required LatLng center,
     required bool overlayEnabled,
-    required int timesPressed,
+    required int timesPressedParcel,
+    required int timesPressedLocation,
     required CadastryLayerColor cadastryColor,
+    required LatLng? location,
     required void Function(CadastryData data) onParcelDataChanged,
   })  : _center = center,
         _overlayEnabled = overlayEnabled,
-        _pressedNum = timesPressed,
+        _pressedNumParcel = timesPressedParcel,
+        _pressedNumLocation = timesPressedLocation,
         _cadastryColor = cadastryColor,
+        _location = location,
         _onParcelDataChanged = onParcelDataChanged,
         super(key: key);
 
   final LatLng _center;
   final bool _overlayEnabled;
-  final int _pressedNum;
+  final int _pressedNumParcel;
+  final int _pressedNumLocation;
   final CadastryLayerColor _cadastryColor;
+  final LatLng? _location;
   final Function(CadastryData data) _onParcelDataChanged;
 
   @override
   State<MapFlutter> createState() => _MapFlutterState();
 }
 
-class _MapFlutterState extends State<MapFlutter> {
+class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
   String myCadastryToken = dotenv.get("PERSONAL_CADASTRY_TOKEN");
   String officialCadastryToken = dotenv.get("OFFICIAL_CADASTRY_TOKEN");
   String mapboxToken = dotenv.get("MAPBOX_PRIVATE_TOKEN");
@@ -42,6 +48,7 @@ class _MapFlutterState extends State<MapFlutter> {
   int tileSize = 2000;
 
   List<LayerOptions> layers = [];
+  List<Marker> renderedMarkers = [];
   List<Polygon> renderedPolygons = [];
 
   late TileLayerOptions mapboxLayer;
@@ -52,7 +59,9 @@ class _MapFlutterState extends State<MapFlutter> {
   TileLayerOptions? _shownCadastryLayer;
 
   MapController mapController = MapController();
-  int oldPressesNum = -1;
+  Marker? currentLocation;
+  int oldPressesNumParcel = -1;
+  int oldPressesNumLocation = -1;
 
   _MapFlutterState() {
     mapboxLayer = TileLayerOptions(
@@ -73,8 +82,7 @@ class _MapFlutterState extends State<MapFlutter> {
           "jis_cestice_kathr",
           "jis_cestice_nazivi_kathr",
           "jis_zgrade_kathr_2"
-        ],
-        //layers: [
+        ], //layers: [
         //  "cp:CP.CadastralParcel",
         //  "cp:CP.CadastralZoning"
         //],
@@ -121,6 +129,7 @@ class _MapFlutterState extends State<MapFlutter> {
     );
 
     layers.add(mapboxLayer);
+    layers.add(MarkerLayerOptions(markers: renderedMarkers));
     layers.add(PolygonLayerOptions(polygons: renderedPolygons));
     //getPolygon([
     //  LatLng(43.5152045, 16.1085803),
@@ -149,19 +158,34 @@ class _MapFlutterState extends State<MapFlutter> {
       hideCadastryLayer();
       showCadastryLayer();
     }
-    if (oldPressesNum == -1 || oldPressesNum != widget._pressedNum) {
+    if (oldPressesNumParcel != widget._pressedNumParcel) {
       if (cadastryLayerShown()) renderParcelAtCenter();
-      oldPressesNum = widget._pressedNum;
+      oldPressesNumParcel = widget._pressedNumParcel;
     }
+    if (oldPressesNumLocation != widget._pressedNumLocation) {
+      if (widget._location != null) focusOnLocation();
+      oldPressesNumLocation = widget._pressedNumLocation;
+    }
+    updateLocation();
 
-    return FlutterMap(
-      options: MapOptions(
-        center: widget._center,
-        maxZoom: 18.499,
+    return Stack(children: [
+      FlutterMap(
+        options: MapOptions(
+          center: widget._center,
+          maxZoom: 18.499,
+          maxBounds:
+              LatLngBounds(LatLng(42.101, 13.205), LatLng(46.836, 19.6525)),
+        ),
+        mapController: mapController,
+        layers: layers,
       ),
-      mapController: mapController,
-      layers: layers,
-    );
+      const Center(
+        child: Padding(
+          padding: EdgeInsets.only(bottom: 24),
+          child: Icon(Icons.not_listed_location, color: Colors.white, size: 24),
+        ),
+      ),
+    ]);
   }
 
   Polygon getPolygon(List<LatLng> points) {
@@ -237,5 +261,53 @@ class _MapFlutterState extends State<MapFlutter> {
 
     widget._onParcelDataChanged(f);
     return getPolygon(f.features[0].geometry);
+  }
+
+  void updateLocation() {
+    if (widget._location == null && currentLocation == null) return;
+    if (currentLocation != null) {
+      renderedMarkers.remove(currentLocation);
+      currentLocation = null;
+    }
+    if (widget._location != null) {
+      currentLocation = Marker(
+        point: widget._location!,
+        builder: (b) => const Icon(Icons.radio_button_on, color: Colors.white),
+      );
+      renderedMarkers.add(currentLocation!);
+    }
+    setState(() {});
+  }
+
+  void focusOnLocation() {
+    if (widget._location == null) return;
+    //mapController.move(widget._location!, 17);
+
+    final latTween = Tween(
+        begin: mapController.center.latitude, end: widget._location!.latitude);
+    final lngTween = Tween(
+        begin: mapController.center.longitude,
+        end: widget._location!.longitude);
+    final zoomTween = Tween(begin: mapController.zoom, end: 17.0);
+
+    final cnt = AnimationController(
+        duration: const Duration(milliseconds: 1000), vsync: this);
+    final anim = CurvedAnimation(parent: cnt, curve: Curves.easeInOut);
+
+    cnt.addListener(() {
+      mapController.move(
+          LatLng(latTween.evaluate(anim), lngTween.evaluate(anim)),
+          zoomTween.evaluate(anim));
+    });
+
+    anim.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        cnt.dispose();
+      } else if (status == AnimationStatus.dismissed) {
+        cnt.dispose();
+      }
+    });
+
+    cnt.forward();
   }
 }
