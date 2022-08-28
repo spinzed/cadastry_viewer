@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:cadastry_viewer/widgets/address_search.dart';
 import 'package:flutter/material.dart';
 import 'package:cadastry_viewer/models/cadastry_geoserver.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -62,6 +63,7 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
   Marker? currentLocation;
   int oldPressesNumParcel = -1;
   int oldPressesNumLocation = -1;
+  int timesMapPressed = 0;
 
   _MapFlutterState() {
     mapboxLayer = TileLayerOptions(
@@ -163,7 +165,7 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
       oldPressesNumParcel = widget._pressedNumParcel;
     }
     if (oldPressesNumLocation != widget._pressedNumLocation) {
-      if (widget._location != null) focusOnLocation();
+      if (widget._location != null) focusOnLocation(widget._location!);
       oldPressesNumLocation = widget._pressedNumLocation;
     }
     updateLocation();
@@ -173,6 +175,7 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
         options: MapOptions(
           center: widget._center,
           maxZoom: 18.499,
+          onTap: (a, b) => setState(() => timesMapPressed++),
           maxBounds:
               LatLngBounds(LatLng(42.101, 13.205), LatLng(46.836, 19.6525)),
         ),
@@ -183,6 +186,32 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
         child: Padding(
           padding: EdgeInsets.only(bottom: 24),
           child: Icon(Icons.not_listed_location, color: Colors.white, size: 24),
+        ),
+      ),
+      Padding(
+        padding:
+            EdgeInsets.only(top: 25.0 + MediaQuery.of(context).viewPadding.top),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: 40,
+              child: IconButton(
+                icon: const Icon(
+                  Icons.menu,
+                  color: Colors.white,
+                  size: 28,
+                ),
+                onPressed: () => Scaffold.of(context).openDrawer(),
+                tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,
+              ),
+            ),
+            AddressSearch(
+              width: MediaQuery.of(context).size.width * 0.75,
+              onChooseLocation: (l) => focusOnLocation(l),
+              onUnfocus: timesMapPressed,
+            ),
+          ],
         ),
       ),
     ]);
@@ -279,15 +308,11 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
     setState(() {});
   }
 
-  void focusOnLocation() {
-    if (widget._location == null) return;
-    //mapController.move(widget._location!, 17);
-
-    final latTween = Tween(
-        begin: mapController.center.latitude, end: widget._location!.latitude);
-    final lngTween = Tween(
-        begin: mapController.center.longitude,
-        end: widget._location!.longitude);
+  void focusOnLocation(LatLng location) {
+    final latTween =
+        Tween(begin: mapController.center.latitude, end: location.latitude);
+    final lngTween =
+        Tween(begin: mapController.center.longitude, end: location.longitude);
     final zoomTween = Tween(begin: mapController.zoom, end: 17.0);
 
     final cnt = AnimationController(

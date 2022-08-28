@@ -45,20 +45,16 @@ class _MapMapboxState extends State<MapMapbox> {
     //var standard = "EPSG:4258";
     //var standard = "EPSG:4328";
 
-    // ignore: constant_identifier_names
-    const Minx = "42.40100004035178";
-    // ignore: constant_identifier_names
-    const Miny = "13.285948819776737";
-    // ignore: constant_identifier_names
-    const Maxx = "46.57331946653396";
-    // ignore: constant_identifier_names
-    const Maxy = "19.425000000022646";
+    //const MINX = "42.40100004035178";
+    //const MINY = "13.285948819776737";
+    //const MAXX = "46.57331946653396";
+    //const MAXY = "19.425000000022646";
 
     mapController.getVisibleRegion().then((bounds) {
-      var minx = bounds.southwest.latitude;
-      var miny = bounds.southwest.longitude;
-      var maxx = bounds.northeast.latitude;
-      var maxy = bounds.northeast.longitude;
+      //var minx = bounds.southwest.latitude;
+      //var miny = bounds.southwest.longitude;
+      //var maxx = bounds.northeast.latitude;
+      //var maxy = bounds.northeast.longitude;
 
       var url =
           //"https://oss.uredjenazemlja.hr/OssWebServices/inspireService/wms?service=WMS&version=1.3.0&request=GetMap&layers=cp:CP.CadastralParcel&styles=&bbox=$minx,$miny,$maxx,$maxy&width=$width&height=$height&srs=$standard&format=image/png&transparent=true&token=$token";

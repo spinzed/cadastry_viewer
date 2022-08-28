@@ -128,9 +128,6 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-      ),
       drawer: Drawer(
         backgroundColor: Colors.brown.shade700.withOpacity(0.9),
         child: Theme(
@@ -145,7 +142,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 )),
             child: ListView(children: [
               SizedBox(
-                height: 80,
+                height: 70,
                 child: DrawerHeader(
                   decoration: BoxDecoration(
                     color: Colors.brown.withOpacity(0.5),
@@ -153,9 +150,9 @@ class _MyHomePageState extends State<MyHomePage> {
                   child: const Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      "Options",
+                      "Cadastry Viewer",
                       style:
-                          TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
+                          TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
@@ -235,9 +232,7 @@ class _MyHomePageState extends State<MyHomePage> {
         timesPressedLocation: _timesPressedLocation,
         cadastryColor: _cadastryLayerColor,
         location: _currentPos,
-        onParcelDataChanged: (data) {
-          setStateSheet!(() => _parcelData = data);
-        },
+        onParcelDataChanged: (data) => setStateSheet!(() => _parcelData = data),
       ),
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.start,
