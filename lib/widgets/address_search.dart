@@ -27,7 +27,8 @@ class AddressSearch extends StatefulWidget {
 
 class _AddressSearchState extends State<AddressSearch> {
   String token = dotenv.get("POSITIONSTACK_TOKEN");
-  final limit = 4;
+  final shownLimit = 4;
+  final queryLimit = 80;
 
   String _lastInput = "";
   PositionstackData? _data;
@@ -40,13 +41,28 @@ class _AddressSearchState extends State<AddressSearch> {
     setState(() => _lastInput = text);
 
     final resp = await http.get(Uri.parse(
-        "http://api.positionstack.com/v1/forward?access_key=$token&query=$query&limit=$limit&country=HR&output=json"));
+        "http://api.positionstack.com/v1/forward?access_key=$token&query=$query&limit=$queryLimit&country=HR&output=json"));
 
     if (_lastInput != text) return;
     debugPrint(resp.request?.url.toString());
 
     final parsed = jsonDecode(utf8.decode(resp.bodyBytes));
-    setState(() => _data = PositionstackData.fromJson(parsed));
+    final fin = PositionstackData.fromJson(parsed);
+
+    if (fin.data.length <= shownLimit) {
+      setState(() => _data = fin);
+      return;
+    }
+
+    List<PositionstackEntry> addrs =
+        fin.data.where((e) => e.type == "address").toList();
+
+    for (int i = 0; addrs.length != shownLimit && i < fin.data.length; ++i) {
+      if (fin.data[i].type != "address") {
+        addrs.add(fin.data[i]);
+      }
+    }
+    setState(() => _data = PositionstackData(data: addrs));
   }
 
   @override

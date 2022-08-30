@@ -50,9 +50,6 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _cadastryLayerEnabled = false;
   CadastryData? _parcelData;
   CadastryLayerColor _cadastryLayerColor = CadastryLayerColor.orange;
-  // used to signal flutter map when show parcel data button has been pressed
-  int _timesPressedParcel = 0;
-  int _timesPressedLocation = 0;
 
   // location related
   bool _userLocationEnabled = false;
@@ -228,46 +225,13 @@ class _MyHomePageState extends State<MyHomePage> {
       body: MapFlutter(
         center: ll.LatLng(_cnt.target.latitude, _cnt.target.longitude),
         overlayEnabled: _cadastryLayerEnabled,
-        timesPressedParcel: _timesPressedParcel,
-        timesPressedLocation: _timesPressedLocation,
         cadastryColor: _cadastryLayerColor,
         location: _currentPos,
         onParcelDataChanged: (data) => setStateSheet!(() => _parcelData = data),
-      ),
-      floatingActionButton: Column(
-        mainAxisAlignment: MainAxisAlignment.start,
-        verticalDirection: VerticalDirection.up,
-        //shrinkWrap: true,
-        children: [
-          FloatingActionButton(
-            //onPressed: () => setState(() => _timesPressed++),
-            backgroundColor: Colors.blue,
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.all(Radius.circular(10))),
-            onPressed: () {
-              setState(() {
-                _timesPressedParcel++;
-                _parcelData = null;
-              });
-              if (!_cadastryLayerEnabled) return;
-              dispatchBottomSheet();
-            },
-
-            tooltip: "View Parcel Data",
-            child: const Icon(Icons.not_listed_location,
-                semanticLabel: "View Parcel Data"),
-          ),
-          const SizedBox(height: 18),
-          FloatingActionButton(
-            //onPressed: () => setState(() => _timesPressed++),
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            onPressed: () => setState(() => _timesPressedLocation++),
-            tooltip: "Go to Your Location",
-            child: const Icon(Icons.radio_button_on,
-                semanticLabel: "Go to Your Location"),
-          ),
-        ],
+        onParcelShown: () {
+          setState(() => _parcelData = null);
+          dispatchBottomSheet();
+        },
       ),
     );
   }

@@ -15,27 +15,24 @@ class MapFlutter extends StatefulWidget {
     Key? key,
     required LatLng center,
     required bool overlayEnabled,
-    required int timesPressedParcel,
-    required int timesPressedLocation,
     required CadastryLayerColor cadastryColor,
     required LatLng? location,
     required void Function(CadastryData data) onParcelDataChanged,
+    required void Function() onParcelShown,
   })  : _center = center,
         _overlayEnabled = overlayEnabled,
-        _pressedNumParcel = timesPressedParcel,
-        _pressedNumLocation = timesPressedLocation,
         _cadastryColor = cadastryColor,
         _location = location,
         _onParcelDataChanged = onParcelDataChanged,
+        _onParcelShown = onParcelShown,
         super(key: key);
 
   final LatLng _center;
   final bool _overlayEnabled;
-  final int _pressedNumParcel;
-  final int _pressedNumLocation;
   final CadastryLayerColor _cadastryColor;
   final LatLng? _location;
   final Function(CadastryData data) _onParcelDataChanged;
+  final Function() _onParcelShown;
 
   @override
   State<MapFlutter> createState() => _MapFlutterState();
@@ -60,7 +57,11 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
   TileLayerOptions? _shownCadastryLayer;
 
   MapController mapController = MapController();
+  double? currentRotation;
+
   Marker? currentLocation;
+  bool _locationAtCenter = false;
+  bool _pointerDown = false;
   int oldPressesNumParcel = -1;
   int oldPressesNumLocation = -1;
   int timesMapPressed = 0;
@@ -160,14 +161,6 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
       hideCadastryLayer();
       showCadastryLayer();
     }
-    if (oldPressesNumParcel != widget._pressedNumParcel) {
-      if (cadastryLayerShown()) renderParcelAtCenter();
-      oldPressesNumParcel = widget._pressedNumParcel;
-    }
-    if (oldPressesNumLocation != widget._pressedNumLocation) {
-      if (widget._location != null) focusOnLocation(widget._location!);
-      oldPressesNumLocation = widget._pressedNumLocation;
-    }
     updateLocation();
 
     return Stack(children: [
@@ -176,18 +169,114 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
           center: widget._center,
           maxZoom: 18.499,
           onTap: (a, b) => setState(() => timesMapPressed++),
+          onMapCreated: (c) => mapController = c,
+          onPointerDown: (a, b) => setState(() => _pointerDown = true),
+          onPointerUp: (a, b) => setState(() => _pointerDown = false),
+          onPositionChanged: (a, b) {
+            WidgetsBinding.instance.addPostFrameCallback((d) {
+              setState(() {
+                currentRotation = mapController.rotation;
+                _locationAtCenter = _pointerDown ? false : _locationAtCenter;
+              });
+            });
+          },
           maxBounds:
               LatLngBounds(LatLng(42.101, 13.205), LatLng(46.836, 19.6525)),
         ),
         mapController: mapController,
         layers: layers,
       ),
+      // bottom right buttons
+      Container(
+        alignment: Alignment.bottomRight,
+        padding: const EdgeInsets.only(bottom: 20, right: 15),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.start,
+          verticalDirection: VerticalDirection.up,
+          children: [
+            FloatingActionButton(
+              backgroundColor: Colors.blue,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(10))),
+              onPressed: () {
+                if (!widget._overlayEnabled) return;
+                renderParcelAtCenter();
+                widget._onParcelShown();
+              },
+              tooltip: "View Parcel Data",
+              child: const Icon(Icons.not_listed_location,
+                  semanticLabel: "View Parcel Data"),
+            ),
+            const SizedBox(height: 18),
+            FloatingActionButton(
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              onPressed: () {
+                if (widget._location != null) {
+                  focusOnLocation(widget._location!);
+                  setState(() => _locationAtCenter = true);
+                }
+              },
+              tooltip: "Go to Your Location",
+              child: Icon(
+                  widget._location == null
+                      ? Icons.location_disabled
+                      : _locationAtCenter
+                          ? Icons.my_location
+                          : Icons.location_searching,
+                  semanticLabel: "Go to Your Location"),
+            ),
+          ],
+        ),
+      ),
+      // center icon
       const Center(
         child: Padding(
           padding: EdgeInsets.only(bottom: 24),
           child: Icon(Icons.not_listed_location, color: Colors.white, size: 24),
         ),
       ),
+      // compass
+      Padding(
+        padding: EdgeInsets.only(
+            right: 15.0, top: 100.0 + MediaQuery.of(context).viewPadding.top),
+        child: GestureDetector(
+          onTap: () => rotate(0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Transform.rotate(
+                angle: degToRadian(currentRotation ?? 0.0),
+                child: Stack(
+                  alignment: Alignment.topCenter,
+                  children: [
+                    Transform.rotate(
+                      angle: degToRadian(-45),
+                      child: const Icon(
+                        Icons.explore,
+                        color: Colors.white,
+                        size: 35,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.only(top: 1),
+                      child: const Text(
+                        "N",
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 7,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      // search bar
       Padding(
         padding:
             EdgeInsets.only(top: 25.0 + MediaQuery.of(context).viewPadding.top),
@@ -313,7 +402,7 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
         Tween(begin: mapController.center.latitude, end: location.latitude);
     final lngTween =
         Tween(begin: mapController.center.longitude, end: location.longitude);
-    final zoomTween = Tween(begin: mapController.zoom, end: 17.0);
+    final zoomTween = Tween(begin: mapController.zoom, end: 16.0);
 
     final cnt = AnimationController(
         duration: const Duration(milliseconds: 1000), vsync: this);
@@ -323,6 +412,30 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
       mapController.move(
           LatLng(latTween.evaluate(anim), lngTween.evaluate(anim)),
           zoomTween.evaluate(anim));
+    });
+
+    anim.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        cnt.dispose();
+      } else if (status == AnimationStatus.dismissed) {
+        cnt.dispose();
+      }
+    });
+
+    cnt.forward();
+  }
+
+  void rotate(double angle) {
+    if (mapController.rotation == angle) return;
+
+    final tween = Tween(begin: mapController.rotation, end: angle);
+    final cnt = AnimationController(
+        duration: const Duration(milliseconds: 500), vsync: this);
+    final anim = CurvedAnimation(parent: cnt, curve: Curves.easeOutQuart);
+
+    cnt.addListener(() {
+      mapController.rotate(tween.evaluate(anim));
+      setState(() => currentRotation = tween.evaluate(anim));
     });
 
     anim.addStatusListener((status) {
