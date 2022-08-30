@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:cadastry_viewer/utils/shared_preferences.dart';
 import 'package:cadastry_viewer/widgets/address_search.dart';
+import 'package:cadastry_viewer/widgets/custom_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:cadastry_viewer/models/cadastry_geoserver.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -13,26 +16,35 @@ enum CadastryLayerColor { orange, black }
 class MapFlutter extends StatefulWidget {
   const MapFlutter({
     Key? key,
-    required LatLng center,
+    required LatLng initialPosition,
+    required double initialZoom,
     required bool overlayEnabled,
     required CadastryLayerColor cadastryColor,
     required LatLng? location,
     required void Function(CadastryData data) onParcelDataChanged,
     required void Function() onParcelShown,
-  })  : _center = center,
+    required void Function() onEnableParcel,
+    required void Function() onEnableLocation,
+  })  : _initialPosition = initialPosition,
+        _initialZoom = initialZoom,
         _overlayEnabled = overlayEnabled,
         _cadastryColor = cadastryColor,
         _location = location,
         _onParcelDataChanged = onParcelDataChanged,
         _onParcelShown = onParcelShown,
+        _onEnableParcel = onEnableParcel,
+        _onEnableLocation = onEnableLocation,
         super(key: key);
 
-  final LatLng _center;
+  final LatLng _initialPosition;
+  final double _initialZoom;
   final bool _overlayEnabled;
   final CadastryLayerColor _cadastryColor;
   final LatLng? _location;
   final Function(CadastryData data) _onParcelDataChanged;
   final Function() _onParcelShown;
+  final Function() _onEnableParcel;
+  final Function() _onEnableLocation;
 
   @override
   State<MapFlutter> createState() => _MapFlutterState();
@@ -62,6 +74,7 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
   Marker? currentLocation;
   bool _locationAtCenter = false;
   bool _pointerDown = false;
+  bool _locationWriteable = true; // used to throttle position caching
   int oldPressesNumParcel = -1;
   int oldPressesNumLocation = -1;
   int timesMapPressed = 0;
@@ -132,6 +145,7 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
     );
 
     layers.add(mapboxLayer);
+    layers.add(zupanijaLayer);
     layers.add(MarkerLayerOptions(markers: renderedMarkers));
     layers.add(PolygonLayerOptions(polygons: renderedPolygons));
     //getPolygon([
@@ -166,7 +180,8 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
     return Stack(children: [
       FlutterMap(
         options: MapOptions(
-          center: widget._center,
+          center: widget._initialPosition,
+          zoom: widget._initialZoom,
           maxZoom: 18.499,
           onTap: (a, b) => setState(() => timesMapPressed++),
           onMapCreated: (c) => mapController = c,
@@ -174,6 +189,7 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
           onPointerUp: (a, b) => setState(() => _pointerDown = false),
           onPositionChanged: (a, b) {
             WidgetsBinding.instance.addPostFrameCallback((d) {
+              savePosition();
               setState(() {
                 currentRotation = mapController.rotation;
                 _locationAtCenter = _pointerDown ? false : _locationAtCenter;
@@ -181,7 +197,7 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
             });
           },
           maxBounds:
-              LatLngBounds(LatLng(42.101, 13.205), LatLng(46.836, 19.6525)),
+              LatLngBounds(LatLng(40.001, 12.005), LatLng(48.936, 20.8525)),
         ),
         mapController: mapController,
         layers: layers,
@@ -194,27 +210,34 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
           mainAxisAlignment: MainAxisAlignment.start,
           verticalDirection: VerticalDirection.up,
           children: [
+            // parcel select button
             FloatingActionButton(
               backgroundColor: Colors.blue,
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               shape: const RoundedRectangleBorder(
                   borderRadius: BorderRadius.all(Radius.circular(10))),
               onPressed: () {
-                if (!widget._overlayEnabled) return;
-                renderParcelAtCenter();
-                widget._onParcelShown();
+                if (widget._overlayEnabled) {
+                  renderParcelAtCenter();
+                  widget._onParcelShown();
+                } else {
+                  showEnableOverlayDialog();
+                }
               },
               tooltip: "View Parcel Data",
               child: const Icon(Icons.not_listed_location,
                   semanticLabel: "View Parcel Data"),
             ),
             const SizedBox(height: 18),
+            // go to location button
             FloatingActionButton(
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               onPressed: () {
                 if (widget._location != null) {
                   focusOnLocation(widget._location!);
                   setState(() => _locationAtCenter = true);
+                } else {
+                  showLocationDialog();
                 }
               },
               tooltip: "Go to Your Location",
@@ -319,8 +342,7 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
   void showCadastryLayer() {
     if (cadastryLayerShown()) return;
 
-    layers.addAll([getSelectedCadastryLayer(), zupanijaLayer]);
-
+    layers.add(getSelectedCadastryLayer());
     setState(() => _shownCadastryLayer = getSelectedCadastryLayer());
   }
 
@@ -328,8 +350,6 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
     if (!cadastryLayerShown()) return;
 
     layers.remove(_shownCadastryLayer);
-    layers.remove(zupanijaLayer);
-
     setState(() => _shownCadastryLayer = null);
   }
 
@@ -447,5 +467,85 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
     });
 
     cnt.forward();
+  }
+
+  void savePosition() {
+    if (!_locationWriteable) {
+      return;
+    }
+    Timer(const Duration(milliseconds: 1000), () {
+      setState(() {
+        _locationWriteable = true;
+        savePositionNoThrottle();
+      });
+    });
+    savePositionNoThrottle();
+    setState(() => _locationWriteable = false);
+  }
+
+  void savePositionNoThrottle() {
+    prefs?.setDouble("lastLat", mapController.center.latitude);
+    prefs?.setDouble("lastLng", mapController.center.longitude);
+    prefs?.setDouble("lastZoom", mapController.zoom);
+  }
+
+  void showEnableOverlayDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return CustomDialog(
+          title: const Text("Cadastry Visibility is Off"),
+          content: const [
+            Text(
+                "You were attempting to get details of a parcel, but the parcel visibilty is turned off."),
+            Text("Would you like to show the parcel layer first?"),
+          ],
+          actions: [
+            TextButton(
+              child: const Text("Yes", style: TextStyle(color: Colors.white)),
+              onPressed: () {
+                widget._onEnableParcel();
+                Navigator.of(ctx).pop();
+              },
+            ),
+            TextButton(
+              child: const Text("No", style: TextStyle(color: Colors.white)),
+              onPressed: () => Navigator.of(ctx).pop(),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void showLocationDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return CustomDialog(
+          title: const Text("Location Services are Off"),
+          content: const [
+            Text(
+                "You were trying to go to your location, but location services are turned off."),
+            Text("Enable location services and try again."),
+          ],
+          actions: [
+            TextButton(
+              child: const Text("Enable Location",
+                  style: TextStyle(color: Colors.white)),
+              onPressed: () {
+                widget._onEnableLocation();
+                Navigator.of(ctx).pop();
+              },
+            ),
+            TextButton(
+              child:
+                  const Text("Dismiss", style: TextStyle(color: Colors.white)),
+              onPressed: () => Navigator.of(ctx).pop(),
+            ),
+          ],
+        );
+      },
+    );
   }
 }

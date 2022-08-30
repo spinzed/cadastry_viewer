@@ -1,17 +1,19 @@
 import 'dart:async';
 
 import 'package:cadastry_viewer/utils/location.dart' as location;
+import 'package:cadastry_viewer/utils/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:cadastry_viewer/utils/epsg_crs.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:mapbox_gl/mapbox_gl.dart';
-import 'package:latlong2/latlong.dart' as ll;
+import 'package:latlong2/latlong.dart';
 import 'models/cadastry_geoserver.dart';
 import 'widgets/map_flutter.dart';
 
 Future main() async {
   await dotenv.load();
+  await setupSharedPrefs();
   registerProjections();
+
   runApp(const MyApp());
 }
 
@@ -47,17 +49,19 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  bool _cadastryLayerEnabled = false;
+  bool _cadastryEnabled = prefs?.getBool("cadastryEnabled") ?? true;
   CadastryData? _parcelData;
-  CadastryLayerColor _cadastryLayerColor = CadastryLayerColor.orange;
+  CadastryLayerColor _cadastryLayerColor =
+      (prefs?.getString("cadastryLayerColor") ?? "orange") == "orange"
+          ? CadastryLayerColor.orange
+          : CadastryLayerColor.black;
 
   // location related
   bool _userLocationEnabled = false;
-  ll.LatLng? _currentPos;
+  LatLng? _location;
+  late final LatLng _initialPos;
+  late final double _initialZoom;
   StreamSubscription? locationSS;
-
-  final CameraPosition _cnt =
-      const CameraPosition(target: LatLng(43.5152271, 16.1088484), zoom: 15);
 
   TextStyle style0 = TextStyle(
       fontSize: 24, color: Colors.grey.shade300, fontWeight: FontWeight.w300);
@@ -67,6 +71,11 @@ class _MyHomePageState extends State<MyHomePage> {
       fontSize: 22, color: Colors.grey.shade300, fontWeight: FontWeight.bold);
 
   StateSetter? setStateSheet;
+
+  _MyHomePageState() {
+    _initialPos = getInitialPosition();
+    _initialZoom = getInitialZoom();
+  }
 
   void dispatchBottomSheet() {
     showModalBottomSheet(
@@ -107,9 +116,11 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void registerLocationListener() {
-    locationSS = location.location.onLocationChanged.listen((data) => setState(
-        () =>
-            _currentPos = ll.LatLng(data.latitude ?? 0, data.longitude ?? 0)));
+    locationSS = location.location.onLocationChanged.listen((data) {
+      setState(() {
+        _location = LatLng(data.latitude ?? 0, data.longitude ?? 0);
+      });
+    });
   }
 
   void disableLocation() {
@@ -117,8 +128,39 @@ class _MyHomePageState extends State<MyHomePage> {
       locationSS?.cancel();
       setState(() {
         _userLocationEnabled = false;
-        _currentPos = null;
+        _location = null;
       });
+    }
+  }
+
+  LatLng getInitialPosition() {
+    return LatLng(
+      prefs?.getDouble("lastLat") ?? 44.539039,
+      prefs?.getDouble("lastLng") ?? 16.442823,
+    );
+  }
+
+  double getInitialZoom() {
+    return prefs?.getDouble("lastZoom") ?? 6.627313992993807;
+  }
+
+  void setCadastryEnabled(bool enabled) {
+    if (_cadastryEnabled == enabled) return;
+
+    prefs?.setBool("cadastryEnabled", enabled);
+    setState(() => _cadastryEnabled = enabled);
+  }
+
+  void setLocationEnabled(bool enabled) async {
+    if (!_userLocationEnabled) {
+      await location.setupLocation();
+      if (location.enabled) {
+        //LatLng lok = await location.getLocation();
+        registerLocationListener();
+        setState(() => _userLocationEnabled = true);
+      }
+    } else {
+      disableLocation();
     }
   }
 
@@ -161,13 +203,11 @@ class _MyHomePageState extends State<MyHomePage> {
                     subtitle: const Text("Toggle cadastry layer visibility"),
                     enableFeedback: true,
                     //secondary: const Icon(Icons.map),
-                    value: _cadastryLayerEnabled,
+                    value: _cadastryEnabled,
                     checkboxShape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(3),
                     ),
-                    onChanged: (val) => setState(() {
-                      _cadastryLayerEnabled = !_cadastryLayerEnabled;
-                    }),
+                    onChanged: (val) => setCadastryEnabled(!_cadastryEnabled),
                   )),
               Card(
                   color: Colors.brown,
@@ -185,15 +225,19 @@ class _MyHomePageState extends State<MyHomePage> {
                         title: const Text("Orange"),
                         value: CadastryLayerColor.orange,
                         groupValue: _cadastryLayerColor,
-                        onChanged: (val) =>
-                            setState(() => _cadastryLayerColor = val!),
+                        onChanged: (val) {
+                          prefs?.setString("cadastryLayerColor", "orange");
+                          setState(() => _cadastryLayerColor = val!);
+                        },
                       ),
                       RadioListTile<CadastryLayerColor>(
                         title: const Text("Black"),
                         value: CadastryLayerColor.black,
                         groupValue: _cadastryLayerColor,
-                        onChanged: (val) =>
-                            setState(() => _cadastryLayerColor = val!),
+                        onChanged: (val) {
+                          prefs?.setString("cadastryLayerColor", "black");
+                          setState(() => _cadastryLayerColor = val!);
+                        },
                       ),
                     ],
                   )),
@@ -206,32 +250,24 @@ class _MyHomePageState extends State<MyHomePage> {
                   checkboxShape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(3),
                   ),
-                  onChanged: (last) async {
-                    if (!_userLocationEnabled) {
-                      await location.setupLocation();
-                      if (location.enabled) {
-                        //ll.LatLng lok = await location.getLocation();
-                        registerLocationListener();
-                        setState(() => _userLocationEnabled = true);
-                      }
-                    } else {
-                      disableLocation();
-                    }
-                  },
+                  onChanged: (v) => setLocationEnabled(!_userLocationEnabled),
                 ),
               ),
             ])),
       ),
       body: MapFlutter(
-        center: ll.LatLng(_cnt.target.latitude, _cnt.target.longitude),
-        overlayEnabled: _cadastryLayerEnabled,
+        initialPosition: _initialPos,
+        initialZoom: _initialZoom,
+        overlayEnabled: _cadastryEnabled,
         cadastryColor: _cadastryLayerColor,
-        location: _currentPos,
+        location: _location,
         onParcelDataChanged: (data) => setStateSheet!(() => _parcelData = data),
         onParcelShown: () {
           setState(() => _parcelData = null);
           dispatchBottomSheet();
         },
+        onEnableParcel: () => setCadastryEnabled(true),
+        onEnableLocation: () => setLocationEnabled(true),
       ),
     );
   }
