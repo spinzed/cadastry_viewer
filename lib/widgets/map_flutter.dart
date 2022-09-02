@@ -148,18 +148,6 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
     layers.add(zupanijaLayer);
     layers.add(MarkerLayerOptions(markers: renderedMarkers));
     layers.add(PolygonLayerOptions(polygons: renderedPolygons));
-    //getPolygon([
-    //  LatLng(43.5152045, 16.1085803),
-    //  LatLng(43.5152017, 16.1085852),
-    //  LatLng(43.5151671, 16.1086481),
-    //  LatLng(43.5151606, 16.1086685),
-    //  LatLng(43.5151676, 16.1087024),
-    //  LatLng(43.5152041, 16.1087673),
-    //  LatLng(43.5154459, 16.1086745),
-    //  LatLng(43.5154131, 16.1086225),
-    //  LatLng(43.5152949, 16.1085823),
-    //  LatLng(43.5152043, 16.1085802),
-    //])
   }
 
   @override
@@ -320,6 +308,7 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
             ),
             AddressSearch(
               width: MediaQuery.of(context).size.width * 0.75,
+              controller: mapController,
               onChooseLocation: (l) => focusOnLocation(l),
               onUnfocus: timesMapPressed,
             ),
@@ -422,7 +411,7 @@ class _MapFlutterState extends State<MapFlutter> with TickerProviderStateMixin {
         Tween(begin: mapController.center.latitude, end: location.latitude);
     final lngTween =
         Tween(begin: mapController.center.longitude, end: location.longitude);
-    final zoomTween = Tween(begin: mapController.zoom, end: 16.0);
+    final zoomTween = Tween(begin: mapController.zoom, end: 16.5);
 
     final cnt = AnimationController(
         duration: const Duration(milliseconds: 1000), vsync: this);
